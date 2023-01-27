@@ -2,8 +2,10 @@ import { performance } from 'node:perf_hooks';
 import { ReadableStream, ByteLengthQueuingStrategy, CountQueuingStrategy, ReadableByteStreamController, ReadableStreamBYOBReader, ReadableStreamBYOBRequest, ReadableStreamDefaultController, ReadableStreamDefaultReader, TransformStream, WritableStream, WritableStreamDefaultController, WritableStreamDefaultWriter } from 'node:stream/web';
 import * as undici from 'undici';
 import { setTimeout as setTimeout$1, clearTimeout as clearTimeout$1 } from 'node:timers';
-import { A as App, s as server_default, g as deserializeManifest } from './chunks/astro.7302a934.mjs';
-import { _ as _page0 } from './chunks/pages/all.a25e9021.mjs';
+import { A as App, s as server_default, g as deserializeManifest } from './chunks/astro.d10da367.mjs';
+import React, { createElement } from 'react';
+import ReactDOM from 'react-dom/server';
+import { _ as _page0 } from './chunks/pages/all.8ebd656d.mjs';
 import 'html-escaper';
 import 'path-to-regexp';
 import 'mime';
@@ -11,7 +13,8 @@ import 'cookie';
 import 'kleur/colors';
 import 'string-width';
 import 'slash';
-/* empty css                                 */
+/* empty css                                 */import 'react/jsx-runtime';
+
 /** Returns the function bound to the given object. */
 const __function_bind = Function.bind.bind(Function.call);
 /** Returns whether the object prototype exists in another object. */
@@ -2929,10 +2932,206 @@ const adapter = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   createExports
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const pageMap = new Map([["src/pages/index.astro", _page0],]);
-const renderers = [Object.assign({"name":"astro:jsx","serverEntrypoint":"astro/jsx/server.js","jsxImportSource":"astro"}, { ssr: server_default }),];
+/**
+ * Astro passes `children` as a string of HTML, so we need
+ * a wrapper `div` to render that content as VNodes.
+ *
+ * As a bonus, we can signal to React that this subtree is
+ * entirely static and will never change via `shouldComponentUpdate`.
+ */
+const StaticHtml = ({ value, name }) => {
+	if (!value) return null;
+	return createElement('astro-slot', {
+		name,
+		suppressHydrationWarning: true,
+		dangerouslySetInnerHTML: { __html: value },
+	});
+};
 
-const _manifest = Object.assign(deserializeManifest({"adapterName":"@astrojs/netlify/functions","routes":[{"file":"","links":["_astro/index.ea3e38e5.css"],"scripts":[{"type":"inline","value":"let t=0;const e=document.querySelector(\"#cart\");e.addEventListener(\"click\",c=>{document.querySelector(\"#cart-items\").textContent=`${t++}`});\n"}],"routeData":{"route":"/","type":"page","pattern":"^\\/$","segments":[],"params":[],"component":"src/pages/index.astro","pathname":"/","_meta":{"trailingSlash":"ignore"}}}],"base":"/","markdown":{"drafts":false,"syntaxHighlight":"shiki","shikiConfig":{"langs":[],"theme":"github-dark","wrap":false},"remarkPlugins":[],"rehypePlugins":[],"remarkRehype":{},"gfm":true,"smartypants":true,"contentDir":"file:///Users/jimfoley/Desktop/astroproject/src/content/"},"pageMap":null,"renderers":[],"entryModules":{"\u0000@astrojs-ssr-virtual-entry":"_@astrojs-ssr-virtual-entry.mjs","/astro/hoisted.js?q=0":"_astro/hoisted.ef075323.js","astro:scripts/before-hydration.js":""},"assets":["/_astro/index.ea3e38e5.css","/favicon.svg"]}), {
+/**
+ * This tells React to opt-out of re-rendering this subtree,
+ * In addition to being a performance optimization,
+ * this also allows other frameworks to attach to `children`.
+ *
+ * See https://preactjs.com/guide/v8/external-dom-mutations
+ */
+StaticHtml.shouldComponentUpdate = () => false;
+
+const slotName = (str) => str.trim().replace(/[-_]([a-z])/g, (_, w) => w.toUpperCase());
+const reactTypeof = Symbol.for('react.element');
+
+function errorIsComingFromPreactComponent(err) {
+	return (
+		err.message &&
+		(err.message.startsWith("Cannot read property '__H'") ||
+			err.message.includes("(reading '__H')"))
+	);
+}
+
+async function check(Component, props, children) {
+	// Note: there are packages that do some unholy things to create "components".
+	// Checking the $$typeof property catches most of these patterns.
+	if (typeof Component === 'object') {
+		const $$typeof = Component['$$typeof'];
+		return $$typeof && $$typeof.toString().slice('Symbol('.length).startsWith('react');
+	}
+	if (typeof Component !== 'function') return false;
+
+	if (Component.prototype != null && typeof Component.prototype.render === 'function') {
+		return React.Component.isPrototypeOf(Component) || React.PureComponent.isPrototypeOf(Component);
+	}
+
+	let error = null;
+	let isReactComponent = false;
+	function Tester(...args) {
+		try {
+			const vnode = Component(...args);
+			if (vnode && vnode['$$typeof'] === reactTypeof) {
+				isReactComponent = true;
+			}
+		} catch (err) {
+			if (!errorIsComingFromPreactComponent(err)) {
+				error = err;
+			}
+		}
+
+		return React.createElement('div');
+	}
+
+	await renderToStaticMarkup(Tester, props, children, {});
+
+	if (error) {
+		throw error;
+	}
+	return isReactComponent;
+}
+
+async function getNodeWritable() {
+	let nodeStreamBuiltinModuleName = 'stream';
+	let { Writable } = await import(/* @vite-ignore */ nodeStreamBuiltinModuleName);
+	return Writable;
+}
+
+async function renderToStaticMarkup(Component, props, { default: children, ...slotted }, metadata) {
+	delete props['class'];
+	const slots = {};
+	for (const [key, value] of Object.entries(slotted)) {
+		const name = slotName(key);
+		slots[name] = React.createElement(StaticHtml, { value, name });
+	}
+	// Note: create newProps to avoid mutating `props` before they are serialized
+	const newProps = {
+		...props,
+		...slots,
+	};
+	const newChildren = children ?? props.children;
+	if (newChildren != null) {
+		newProps.children = React.createElement(StaticHtml, { value: newChildren });
+	}
+	const vnode = React.createElement(Component, newProps);
+	let html;
+	if (metadata && metadata.hydrate) {
+		if ('renderToReadableStream' in ReactDOM) {
+			html = await renderToReadableStreamAsync(vnode);
+		} else {
+			html = await renderToPipeableStreamAsync(vnode);
+		}
+	} else {
+		if ('renderToReadableStream' in ReactDOM) {
+			html = await renderToReadableStreamAsync(vnode);
+		} else {
+			html = await renderToStaticNodeStreamAsync(vnode);
+		}
+	}
+	return { html };
+}
+
+async function renderToPipeableStreamAsync(vnode) {
+	const Writable = await getNodeWritable();
+	let html = '';
+	return new Promise((resolve, reject) => {
+		let error = undefined;
+		let stream = ReactDOM.renderToPipeableStream(vnode, {
+			onError(err) {
+				error = err;
+				reject(error);
+			},
+			onAllReady() {
+				stream.pipe(
+					new Writable({
+						write(chunk, _encoding, callback) {
+							html += chunk.toString('utf-8');
+							callback();
+						},
+						destroy() {
+							resolve(html);
+						},
+					})
+				);
+			},
+		});
+	});
+}
+
+async function renderToStaticNodeStreamAsync(vnode) {
+	const Writable = await getNodeWritable();
+	let html = '';
+	return new Promise((resolve, reject) => {
+		let stream = ReactDOM.renderToStaticNodeStream(vnode);
+		stream.on('error', (err) => {
+			reject(err);
+		});
+		stream.pipe(
+			new Writable({
+				write(chunk, _encoding, callback) {
+					html += chunk.toString('utf-8');
+					callback();
+				},
+				destroy() {
+					resolve(html);
+				},
+			})
+		);
+	});
+}
+
+/**
+ * Use a while loop instead of "for await" due to cloudflare and Vercel Edge issues
+ * See https://github.com/facebook/react/issues/24169
+ */
+async function readResult(stream) {
+	const reader = stream.getReader();
+	let result = '';
+	const decoder = new TextDecoder('utf-8');
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) {
+			if (value) {
+				result += decoder.decode(value);
+			} else {
+				// This closes the decoder
+				decoder.decode(new Uint8Array());
+			}
+
+			return result;
+		}
+		result += decoder.decode(value, { stream: true });
+	}
+}
+
+async function renderToReadableStreamAsync(vnode) {
+	return await readResult(await ReactDOM.renderToReadableStream(vnode));
+}
+
+const _renderer1 = {
+	check,
+	renderToStaticMarkup,
+};
+
+const pageMap = new Map([["src/pages/index.astro", _page0],]);
+const renderers = [Object.assign({"name":"astro:jsx","serverEntrypoint":"astro/jsx/server.js","jsxImportSource":"astro"}, { ssr: server_default }),Object.assign({"name":"@astrojs/react","clientEntrypoint":"@astrojs/react/client.js","serverEntrypoint":"@astrojs/react/server.js","jsxImportSource":"react"}, { ssr: _renderer1 }),];
+
+const _manifest = Object.assign(deserializeManifest({"adapterName":"@astrojs/netlify/functions","routes":[{"file":"","links":["_astro/index.ea3e38e5.css"],"scripts":[{"type":"inline","value":"let t=0;const e=document.querySelector(\"#cart\");e.addEventListener(\"click\",c=>{document.querySelector(\"#cart-items\").textContent=`${t++}`});\n"}],"routeData":{"route":"/","type":"page","pattern":"^\\/$","segments":[],"params":[],"component":"src/pages/index.astro","pathname":"/","_meta":{"trailingSlash":"ignore"}}}],"base":"/","markdown":{"drafts":false,"syntaxHighlight":"shiki","shikiConfig":{"langs":[],"theme":"github-dark","wrap":false},"remarkPlugins":[],"rehypePlugins":[],"remarkRehype":{},"gfm":true,"smartypants":true,"contentDir":"file:///Users/jimfoley/Desktop/astroproject/src/content/"},"pageMap":null,"renderers":[],"entryModules":{"\u0000@astrojs-ssr-virtual-entry":"_@astrojs-ssr-virtual-entry.mjs","/Users/jimfoley/Desktop/astroproject/src/components/ButtonDaddy":"_astro/ButtonDaddy.f1ea05d8.js","/astro/hoisted.js?q=0":"_astro/hoisted.ef075323.js","@astrojs/react/client.js":"_astro/client.38423ee9.js","astro:scripts/before-hydration.js":""},"assets":["/_astro/index.ea3e38e5.css","/favicon.svg","/_astro/ButtonDaddy.f1ea05d8.js","/_astro/client.38423ee9.js","/_astro/index.45a47ed6.js"]}), {
 	pageMap: pageMap,
 	renderers: renderers
 });

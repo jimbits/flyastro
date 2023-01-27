@@ -1,4 +1,5 @@
 ---
+import ButtonDaddy from './ButtonDaddy'
 export interface Props {
 	title: string;
  
@@ -10,6 +11,7 @@ const { title} = Astro.props;
 <header class="py-16 text-center text-4xl">
     <h1>{title || "ui title"}</h1>
     <button id="cart" class="text-sm bg-rose-500 text-white  font-semibold rounded-md py-2 px-4">add to cart</button>
+    <ButtonDaddy client:load/>
 </header>
 
 <script>
